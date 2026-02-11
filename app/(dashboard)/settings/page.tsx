@@ -194,7 +194,7 @@ export default function SettingsPage() {
                       setTheme(themeOption.value as 'system' | 'light' | 'dark')
                       // Also save to preferences for sync
                       updatePreferences({
-                        reading_theme: themeOption.value as any,
+                        reading_theme: themeOption.value as 'light' | 'dark' | 'sepia' | 'system',
                       })
                     }}
                     className={`flex flex-col items-center gap-2 rounded-lg border p-3 transition-colors ${
@@ -301,7 +301,7 @@ export default function SettingsPage() {
               <div>
                 <Label>Enable Text-to-Speech</Label>
                 <p className="text-sm text-muted-foreground">
-                  Read aloud using browser's speech synthesis
+                  Read aloud using browser&apos;s speech synthesis
                 </p>
               </div>
               <Button

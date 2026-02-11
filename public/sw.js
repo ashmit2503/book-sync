@@ -1,6 +1,3 @@
-// BookSync Service Worker
-// Provides offline support and caching for the PWA
-
 const CACHE_NAME = 'booksync-v1'
 const STATIC_ASSETS = [
   '/',
@@ -10,7 +7,6 @@ const STATIC_ASSETS = [
   '/offline',
 ]
 
-// Assets to cache on install
 const PRECACHE_ASSETS = [
   '/manifest.json',
 ]
@@ -19,11 +15,9 @@ const PRECACHE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Precaching static assets')
       return cache.addAll(PRECACHE_ASSETS)
     })
   )
-  // Activate immediately
   self.skipWaiting()
 })
 
@@ -34,40 +28,27 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name)
-            return caches.delete(name)
-          })
+          .map((name) => caches.delete(name))
       )
     })
   )
-  // Take control of all pages immediately
   self.clients.claim()
 })
 
-// Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // Skip non-GET requests
   if (request.method !== 'GET') return
-
-  // Skip external requests
   if (url.origin !== location.origin) return
-
-  // Skip API routes (except for offline sync)
   if (url.pathname.startsWith('/api/')) return
-
-  // Skip Supabase requests
   if (url.hostname.includes('supabase')) return
 
-  // Handle navigation requests (HTML pages)
+  // Navigation requests: network-first with offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache successful responses
           if (response.ok) {
             const responseClone = response.clone()
             caches.open(CACHE_NAME).then((cache) => {
@@ -77,7 +58,6 @@ self.addEventListener('fetch', (event) => {
           return response
         })
         .catch(() => {
-          // Return cached version or offline page
           return caches.match(request).then((cached) => {
             return cached || caches.match('/offline')
           })
@@ -86,7 +66,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Handle static assets (JS, CSS, images)
+  // Static assets: cache-first with background update
   if (
     url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/) ||
     url.pathname.startsWith('/_next/')
@@ -94,18 +74,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) {
-          // Return cache immediately, update in background
-          fetch(request).then((response) => {
-            if (response.ok) {
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, response)
-              })
-            }
-          })
           return cached
         }
 
-        // Fetch and cache
         return fetch(request).then((response) => {
           if (response.ok) {
             const responseClone = response.clone()
@@ -120,7 +91,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Default: network first, fallback to cache
+  // Default: network-first
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -136,7 +107,6 @@ self.addEventListener('fetch', (event) => {
   )
 })
 
-// Background sync for offline changes
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-reading-progress') {
     event.waitUntil(syncReadingProgress())
@@ -160,12 +130,12 @@ async function syncReadingProgress() {
           body: JSON.stringify({ reading_progress: item.progress }),
         })
         await db.delete('pending-progress', item.id)
-      } catch (e) {
-        console.error('[SW] Failed to sync progress:', e)
+      } catch {
+        // Will retry on next sync
       }
     }
-  } catch (e) {
-    console.error('[SW] Error syncing progress:', e)
+  } catch {
+    // DB not available
   }
 }
 
@@ -183,16 +153,15 @@ async function syncAnnotations() {
           body: JSON.stringify(item.annotation),
         })
         await db.delete('pending-annotations', item.id)
-      } catch (e) {
-        console.error('[SW] Failed to sync annotation:', e)
+      } catch {
+        // Will retry on next sync
       }
     }
-  } catch (e) {
-    console.error('[SW] Error syncing annotations:', e)
+  } catch {
+    // DB not available
   }
 }
 
-// Simple IndexedDB wrapper for offline storage
 function openOfflineDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('booksync-offline', 1)
@@ -230,7 +199,6 @@ function openOfflineDB() {
   })
 }
 
-// Push notification support (for future use)
 self.addEventListener('push', (event) => {
   if (!event.data) return
 

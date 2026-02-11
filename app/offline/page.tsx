@@ -10,11 +10,11 @@ export default function OfflinePage() {
       <div className="max-w-md text-center">
         <WifiOff className="mx-auto mb-6 h-16 w-16 text-muted-foreground" />
         
-        <h1 className="mb-4 text-3xl font-bold">You're Offline</h1>
+        <h1 className="mb-4 text-3xl font-bold">You&apos;re Offline</h1>
         
         <p className="mb-8 text-muted-foreground">
-          It looks like you've lost your internet connection. Don't worry - you can still
-          read books that you've previously opened. They're cached for offline reading.
+          It looks like you&apos;ve lost your internet connection. Don&apos;t worry - you can still
+          read books that you&apos;ve previously opened. They&apos;re cached for offline reading.
         </p>
 
         <div className="space-y-3">

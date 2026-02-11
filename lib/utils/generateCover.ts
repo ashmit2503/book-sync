@@ -1,10 +1,6 @@
-import * as pdfjsLib from 'pdfjs-dist'
+import { pdfjsLib } from '@/lib/utils/pdfWorker'
 import ePub from 'epubjs'
 import { createClient } from '@/lib/supabase/client'
-
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-}
 
 /**
  * Generate cover from a File object (used during upload).
@@ -76,7 +72,7 @@ async function generateCoverFromPDFData(
     const supabase = createClient()
     const coverPath = `${userId}/${bookId}/cover.jpg`
 
-    let { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('covers')
       .upload(coverPath, blob, {
         contentType: 'image/jpeg',
@@ -137,7 +133,7 @@ async function generateCoverFromEPUBData(
   userId: string
 ): Promise<string | null> {
   try {
-    const book = ePub(epubData as any)
+    const book = ePub(epubData as unknown as string)
     await book.ready
     
     const coverUrl = await book.coverUrl()
@@ -157,7 +153,7 @@ async function generateCoverFromEPUBData(
     const supabase = createClient()
     const coverPath = `${userId}/${bookId}/cover.jpg`
     
-    let { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('covers')
       .upload(coverPath, blob, {
         contentType: 'image/jpeg',

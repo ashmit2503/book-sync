@@ -17,6 +17,12 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
   const saveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const startPageRef = useRef<number>(0)
   const currentPageRef = useRef<number>(0)
+  const sessionIdRef = useRef<string | null>(null)
+  const sessionStartRef = useRef<Date | null>(null)
+
+  // Keep refs in sync with state
+  sessionIdRef.current = sessionId
+  sessionStartRef.current = sessionStart
 
   // Start a new reading session
   const startSession = useCallback(async (startPage: number = 0) => {
@@ -26,7 +32,7 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
     if (!user) return
 
     // End any existing session first
-    if (sessionId) {
+    if (sessionIdRef.current) {
       await endSession()
     }
 
@@ -56,11 +62,14 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
     saveIntervalRef.current = setInterval(() => {
       saveSessionProgress()
     }, 60000) // Save every minute
-  }, [enabled, bookId, sessionId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, bookId])
 
   // End the current session
   const endSession = useCallback(async () => {
-    if (!sessionId || !sessionStart) return
+    const currentSessionId = sessionIdRef.current
+    const currentSessionStart = sessionStartRef.current
+    if (!currentSessionId || !currentSessionStart) return
 
     if (saveIntervalRef.current) {
       clearInterval(saveIntervalRef.current)
@@ -69,7 +78,7 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
 
     const endTime = new Date()
     const durationMinutes = Math.round(
-      (endTime.getTime() - sessionStart.getTime()) / 60000
+      (endTime.getTime() - currentSessionStart.getTime()) / 60000
     )
     const pagesRead = Math.max(0, currentPageRef.current - startPageRef.current)
 
@@ -80,7 +89,7 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
         duration_minutes: durationMinutes,
         pages_read: pagesRead,
       })
-      .eq('id', sessionId)
+      .eq('id', currentSessionId)
 
     if (error) {
       console.error('Failed to end reading session:', error)
@@ -89,15 +98,17 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
     setSessionId(null)
     setSessionStart(null)
     setIsActive(false)
-  }, [sessionId, sessionStart])
+  }, [])
 
   // Save session progress periodically
   const saveSessionProgress = useCallback(async () => {
-    if (!sessionId || !sessionStart) return
+    const currentSessionId = sessionIdRef.current
+    const currentSessionStart = sessionStartRef.current
+    if (!currentSessionId || !currentSessionStart) return
 
     const now = new Date()
     const durationMinutes = Math.round(
-      (now.getTime() - sessionStart.getTime()) / 60000
+      (now.getTime() - currentSessionStart.getTime()) / 60000
     )
     const pagesRead = Math.max(0, currentPageRef.current - startPageRef.current)
 
@@ -107,8 +118,8 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
         duration_minutes: durationMinutes,
         pages_read: pagesRead,
       })
-      .eq('id', sessionId)
-  }, [sessionId, sessionStart])
+      .eq('id', currentSessionId)
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -123,7 +134,7 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle page visibility changes
+  // End session when page becomes hidden
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && isActive) {
@@ -131,24 +142,12 @@ export function useReadingSession({ bookId, enabled = true }: UseReadingSessionO
       }
     }
 
-    const handleBeforeUnload = () => {
-      if (isActive) {
-        // Sync save before unload
-        navigator.sendBeacon?.(
-          `/api/books/${bookId}/session/end`,
-          JSON.stringify({ sessionId })
-        )
-      }
-    }
-
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('beforeunload', handleBeforeUnload)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [isActive, bookId, sessionId, endSession])
+  }, [isActive, endSession])
 
   return {
     startSession,

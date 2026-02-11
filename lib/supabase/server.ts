@@ -15,15 +15,15 @@ export async function createClient() {
         set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options })
-          } catch (error) {
-            // Handle error in Server Components
+          } catch {
+            // Expected in Server Components where cookies are read-only
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options })
-          } catch (error) {
-            // Handle error in Server Components
+          } catch {
+            // Expected in Server Components where cookies are read-only
           }
         },
       },

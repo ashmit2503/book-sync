@@ -227,6 +227,93 @@ export interface Database {
           added_at?: string
         }
       }
+      bookmarks: {
+        Row: {
+          id: string
+          user_id: string
+          book_id: string
+          position: Json
+          label: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          book_id: string
+          position: Json
+          label?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          book_id?: string
+          position?: Json
+          label?: string | null
+          created_at?: string
+        }
+      }
+      highlights: {
+        Row: {
+          id: string
+          user_id: string
+          book_id: string
+          text: string
+          position: Json
+          color: string
+          note: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          book_id: string
+          text: string
+          position: Json
+          color?: string
+          note?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          book_id?: string
+          text?: string
+          position?: Json
+          color?: string
+          note?: string | null
+          created_at?: string
+        }
+      }
+      notes: {
+        Row: {
+          id: string
+          user_id: string
+          book_id: string
+          content: string
+          position: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          book_id: string
+          content: string
+          position?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          book_id?: string
+          content?: string
+          position?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }

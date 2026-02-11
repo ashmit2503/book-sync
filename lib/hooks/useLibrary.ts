@@ -48,9 +48,9 @@ export function useCollections() {
         .order('name')
 
       if (data && !error) {
-        const collectionsWithCounts = data.map((c: any) => ({
-          ...c,
-          book_count: c.collection_books?.[0]?.count || 0,
+        const collectionsWithCounts = data.map((c) => ({
+          ...(c as unknown as Collection),
+          book_count: (c.collection_books as Array<{count: number}>)?.[0]?.count || 0,
         }))
         setCollections(collectionsWithCounts)
       }
@@ -210,7 +210,7 @@ export function useCollections() {
         return []
       }
 
-      return data?.map((item: any) => item.books) || []
+      return data?.map((item: Record<string, unknown>) => item.books) || []
     },
     []
   )
@@ -273,9 +273,9 @@ export function useTags() {
         .order('name')
 
       if (data && !error) {
-        const tagsWithCounts = data.map((t: any) => ({
-          ...t,
-          book_count: t.book_tags?.[0]?.count || 0,
+        const tagsWithCounts = data.map((t) => ({
+          ...(t as unknown as Tag),
+          book_count: (t.book_tags as Array<{count: number}>)?.[0]?.count || 0,
         }))
         setTags(tagsWithCounts)
       }
@@ -439,7 +439,7 @@ export function useTags() {
         return []
       }
 
-      return data?.map((item: any) => item.tags) || []
+      return (data?.map((item: Record<string, unknown>) => item.tags) || []) as Tag[]
     },
     []
   )

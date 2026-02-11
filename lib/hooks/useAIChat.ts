@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { useAIAssistantStore, ChatMessage } from '@/lib/stores/aiAssistantStore'
+import { useAIAssistantStore, ChatMessage, AIMode } from '@/lib/stores/aiAssistantStore'
 import { useBookContextStore } from '@/lib/stores/bookContextStore'
 
 interface UseAIChatOptions {
@@ -12,11 +12,15 @@ interface UseAIChatOptions {
 
 export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
   const abortControllerRef = useRef<AbortController | null>(null)
+  const isLoadingRef = useRef(false)
 
   const {
     isLoading,
     streamingResponse,
     error,
+    activeMode,
+    selectedText,
+    targetLanguage,
     addMessage,
     setLoading,
     setStreamingResponse,
@@ -25,13 +29,19 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
     clearChat,
     getChatHistory,
     finalizeStreamingMessage,
+    setActiveMode,
+    setSelectedText,
+    togglePin,
+    getPinnedMessages,
   } = useAIAssistantStore()
 
   const { getFullContext, currentPosition } = useBookContextStore()
 
+  isLoadingRef.current = isLoading
+
   const sendMessage = useCallback(
-    async (message: string, position?: number) => {
-      if (!message.trim() || isLoading) return
+    async (message: string, position?: number, modeOverride?: AIMode) => {
+      if (!message.trim() || isLoadingRef.current) return
 
       // Cancel any existing request
       if (abortControllerRef.current) {
@@ -39,11 +49,14 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
       }
       abortControllerRef.current = new AbortController()
 
+      const mode = modeOverride || activeMode
+
       const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content: message.trim(),
         timestamp: Date.now(),
+        mode,
       }
 
       addMessage(bookId, userMessage)
@@ -53,7 +66,6 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
 
       try {
         const effectivePosition = position ?? currentPosition
-        // Get context ONLY up to the current reading position
         const bookContext = getFullContext(bookId, effectivePosition)
 
         if (!bookContext || bookContext.trim().length === 0) {
@@ -79,6 +91,9 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
               role: m.role,
               content: m.content,
             })),
+            mode,
+            selectedText: selectedText || undefined,
+            targetLanguage: mode === 'translate' ? targetLanguage : undefined,
           }),
           signal: abortControllerRef.current.signal,
         })
@@ -115,7 +130,7 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
                 if (parsed.content) {
                   appendStreamingResponse(parsed.content)
                 }
-              } catch (e) {
+              } catch {
                 // Skip invalid JSON
               }
             }
@@ -127,9 +142,13 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
         if (finalResponse) {
           finalizeStreamingMessage(bookId)
         }
+
+        // Clear selected text after use
+        if (selectedText) {
+          setSelectedText('')
+        }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-          // Request was cancelled, ignore
           return
         }
         console.error('AI Chat error:', err)
@@ -147,8 +166,10 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
       bookId,
       bookTitle,
       bookAuthor,
-      isLoading,
       currentPosition,
+      activeMode,
+      selectedText,
+      targetLanguage,
       addMessage,
       setLoading,
       setError,
@@ -157,7 +178,54 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
       getChatHistory,
       appendStreamingResponse,
       finalizeStreamingMessage,
+      setSelectedText,
     ]
+  )
+
+  // Quick action helpers
+  const summarize = useCallback(
+    (position?: number) => {
+      sendMessage('Summarize what I\'ve read so far.', position, 'summarize')
+    },
+    [sendMessage]
+  )
+
+  const explain = useCallback(
+    (text: string, position?: number) => {
+      setSelectedText(text)
+      sendMessage(`Explain this: "${text}"`, position, 'explain')
+    },
+    [sendMessage, setSelectedText]
+  )
+
+  const define = useCallback(
+    (word: string, position?: number) => {
+      setSelectedText(word)
+      sendMessage(`Define: "${word}"`, position, 'define')
+    },
+    [sendMessage, setSelectedText]
+  )
+
+  const quiz = useCallback(
+    (position?: number) => {
+      sendMessage('Quiz me on what I\'ve read so far!', position, 'quiz')
+    },
+    [sendMessage]
+  )
+
+  const analyze = useCallback(
+    (position?: number) => {
+      sendMessage('Analyze the themes and writing in what I\'ve read so far.', position, 'analyze')
+    },
+    [sendMessage]
+  )
+
+  const translate = useCallback(
+    (text: string, position?: number) => {
+      setSelectedText(text)
+      sendMessage(`Translate this passage.`, position, 'translate')
+    },
+    [sendMessage, setSelectedText]
   )
 
   const cancelRequest = useCallback(() => {
@@ -176,9 +244,22 @@ export function useAIChat({ bookId, bookTitle, bookAuthor }: UseAIChatOptions) {
     isLoading,
     streamingResponse,
     error,
+    activeMode,
+    selectedText,
     chatHistory: getChatHistory(bookId),
+    pinnedMessages: getPinnedMessages(bookId),
     sendMessage,
     cancelRequest,
     clearChat: clear,
+    setActiveMode,
+    setSelectedText,
+    togglePin: (messageId: string) => togglePin(bookId, messageId),
+    // Quick actions
+    summarize,
+    explain,
+    define,
+    quiz,
+    analyze,
+    translate,
   }
 }

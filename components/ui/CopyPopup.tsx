@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Sparkles, BookOpen, Languages } from 'lucide-react'
+import { useAIAssistantStore } from '@/lib/stores/aiAssistantStore'
 
 interface CopyPopupProps {
   theme?: 'light' | 'dark'
@@ -86,7 +87,7 @@ export function CopyPopup({ theme = 'light' }: CopyPopupProps) {
             iframeListenersRef.current.set(iframeWindow, handler)
           }
         }
-      } catch (e) {
+      } catch {
         // Cross-origin iframe, can't access
       }
     })
@@ -107,24 +108,26 @@ export function CopyPopup({ theme = 'light' }: CopyPopupProps) {
     })
     observer.observe(document.body, { childList: true, subtree: true })
     
+    const currentListeners = iframeListenersRef.current
+
     return () => {
       document.removeEventListener('mouseup', mainHandler)
       document.removeEventListener('touchend', mainHandler)
       clearInterval(intervalId)
       observer.disconnect()
       
-      iframeListenersRef.current.forEach((handler, iframeWindow) => {
+      currentListeners.forEach((handler, iframeWindow) => {
         try {
           const iframeDoc = (iframeWindow as Window).document
           if (iframeDoc) {
             iframeDoc.removeEventListener('mouseup', handler)
             iframeDoc.removeEventListener('touchend', handler)
           }
-        } catch (e) {
+        } catch {
           // iframe may have been removed
         }
       })
-      iframeListenersRef.current.clear()
+      currentListeners.clear()
     }
   }, [handleSelectionChange, setupIframeListeners])
 
@@ -159,7 +162,7 @@ export function CopyPopup({ theme = 'light' }: CopyPopupProps) {
 
   if (!selection) return null
 
-  const popupWidth = 100
+  const popupWidth = 310
   const popupHeight = 40
   
   const left = Math.max(10, Math.min(
@@ -186,7 +189,7 @@ export function CopyPopup({ theme = 'light' }: CopyPopupProps) {
         isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       }`}
     >
-      <div className="flex items-center p-1">
+      <div className="flex items-center p-1 gap-0.5">
         <Button
           variant="ghost"
           size="sm"
@@ -209,6 +212,77 @@ export function CopyPopup({ theme = 'light' }: CopyPopupProps) {
               <span className="text-xs font-medium">Copy</span>
             </>
           )}
+        </Button>
+        <div className={`w-px h-5 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`} />
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`gap-1.5 ${
+            isDark 
+              ? 'text-blue-400 hover:text-blue-300 hover:bg-gray-700' 
+              : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+          }`}
+          onClick={() => {
+            if (selection) {
+              const store = useAIAssistantStore.getState()
+              store.setSelectedText(selection.text)
+              store.setIsOpen(true)
+              store.setIsMinimized(false)
+              store.setActiveTab('chat')
+              store.setActiveMode('explain')
+              setSelection(null)
+            }
+          }}
+          title="Ask AI about this text"
+        >
+          <Sparkles className="h-4 w-4" />
+          <span className="text-xs font-medium">Ask AI</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`gap-1 px-2 ${
+            isDark 
+              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-gray-700' 
+              : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+          }`}
+          onClick={() => {
+            if (selection) {
+              const store = useAIAssistantStore.getState()
+              store.setSelectedText(selection.text)
+              store.setIsOpen(true)
+              store.setIsMinimized(false)
+              store.setActiveTab('chat')
+              store.setActiveMode('define')
+              setSelection(null)
+            }
+          }}
+          title="Define this word"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`gap-1 px-2 ${
+            isDark 
+              ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700' 
+              : 'text-rose-600 hover:text-rose-700 hover:bg-rose-50'
+          }`}
+          onClick={() => {
+            if (selection) {
+              const store = useAIAssistantStore.getState()
+              store.setSelectedText(selection.text)
+              store.setIsOpen(true)
+              store.setIsMinimized(false)
+              store.setActiveTab('chat')
+              store.setActiveMode('translate')
+              setSelection(null)
+            }
+          }}
+          title="Translate this text"
+        >
+          <Languages className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>

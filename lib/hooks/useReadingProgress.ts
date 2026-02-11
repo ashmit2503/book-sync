@@ -15,7 +15,7 @@ interface ReadingProgress {
 
 export function useReadingProgress(bookId: string) {
   const [progress, setProgress] = useState<ReadingProgress>({
-    currentPage: 0,
+    currentPage: 1,
     totalPages: 0,
     percentage: 0,
     lastRead: null,
@@ -102,23 +102,38 @@ export function useReadingProgress(bookId: string) {
     [bookId]
   )
 
+  // Use a ref to track the latest progress for saving without triggering re-renders.
+  // Only update React state when the page/percentage actually changes (meaningful UI update).
+  const progressRef = useRef(progress)
+  progressRef.current = progress
+
   const updateProgress = useCallback(
     (update: Partial<ReadingProgress>) => {
-      setProgress((prev) => {
-        const newProgress: ReadingProgress = {
-          ...prev,
-          ...update,
-          lastRead: new Date().toISOString(),
-        }
+      const prev = progressRef.current
+      const newProgress: ReadingProgress = {
+        ...prev,
+        ...update,
+        lastRead: new Date().toISOString(),
+      }
 
-        // Immediately save to localStorage
-        localStorage.setItem(`book-${bookId}-progress`, JSON.stringify(newProgress))
+      // Always save to localStorage and database
+      localStorage.setItem(`book-${bookId}-progress`, JSON.stringify(newProgress))
+      saveToDatabase(newProgress)
 
-        // Debounced save to database
-        saveToDatabase(newProgress)
+      // Only update React state (triggering re-render) when position actually changed.
+      // This prevents re-renders from the timestamp-only updates that cause
+      // epub.js layout-shift → relocated → updateProgress → re-render loops.
+      const positionChanged =
+        prev.currentPage !== newProgress.currentPage ||
+        Math.abs(prev.percentage - newProgress.percentage) > 0.5
 
-        return newProgress
-      })
+      if (positionChanged) {
+        progressRef.current = newProgress
+        setProgress(newProgress)
+      } else {
+        // Update ref without re-rendering
+        progressRef.current = newProgress
+      }
     },
     [bookId, saveToDatabase]
   )

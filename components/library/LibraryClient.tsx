@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
+import type { Database } from '@/lib/database.types'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { useCollections, useTags, Tag } from '@/lib/hooks/useLibrary'
 import { Button } from '@/components/ui/button'
@@ -38,23 +40,8 @@ interface ReadingProgress {
   lastRead?: string | null
 }
 
-interface Book {
-  id: string
-  user_id: string
-  title: string
-  author: string | null
-  file_path: string
-  file_size: number
-  file_type: 'pdf' | 'epub'
-  cover_url: string | null
-  page_count: number | null
-  metadata: any
-  reading_progress: ReadingProgress | any
-  created_at: string
-  updated_at: string
-  processing_status: 'pending' | 'processing' | 'completed' | 'failed'
-  tags?: Tag[]
-}
+type BookRow = Database['public']['Tables']['books']['Row']
+type Book = BookRow & { tags?: Tag[] }
 
 // Helper to safely get reading progress percentage
 function getProgressPercentage(book: Book): number {
@@ -91,6 +78,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
   }
 
   // Load tags for each book
+  const booksLoadedRef = useRef(false)
   useEffect(() => {
     async function loadBookTags() {
       const booksWithTags = await Promise.all(
@@ -99,10 +87,11 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
           return { ...book, tags: bookTags }
         })
       )
+      booksLoadedRef.current = true
       setBooks(booksWithTags)
     }
 
-    if (!tagsLoading && books.length > 0) {
+    if (!tagsLoading && books.length > 0 && !booksLoadedRef.current) {
       loadBookTags()
     }
   }, [tagsLoading]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,7 +176,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
       }
     } else {
       setIsLoading(true)
-      const collectionBooks = await getBooksInCollection(collectionId)
+      const collectionBooks = await getBooksInCollection(collectionId) as Book[]
       setBooks(collectionBooks)
       setIsLoading(false)
     }
@@ -513,12 +502,14 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
               className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50"
             >
               {/* Cover */}
-              <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-muted">
+              <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded bg-muted">
                 {book.cover_url ? (
-                  <img
+                  <Image
                     src={book.cover_url}
                     alt={book.title}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="56px"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">

@@ -7,7 +7,7 @@ import { useTextExtraction } from '@/lib/hooks/useTextExtraction'
 import { useReadingSession } from '@/lib/hooks/useReadingSession'
 import { useUserPreferences } from '@/lib/hooks/useUserPreferences'
 import { useTheme } from '@/components/providers/ThemeProvider'
-import { getCachedEPUB, cacheEPUB } from '@/lib/utils/epubCache'
+import { getCachedEPUB, cacheEPUB } from '@/lib/utils/indexedDBCache'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { AIAssistant } from '@/components/ai/AIAssistant'
@@ -82,6 +82,10 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const ttsExtractTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const epubDataRef = useRef<ArrayBuffer | null>(null)
+  const currentLocationRef = useRef<string>('')
+  const applyEpubStylesRef = useRef<(rendition: Rendition) => void>(() => {})
+  const lastCfiRef = useRef<string>('')
+  const initCompleteRef = useRef(false)
 
   // User preferences
   const { preferences, isLoading: preferencesLoading } = useUserPreferences()
@@ -92,7 +96,11 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
   const [loadingMessage, setLoadingMessage] = useState('Loading EPUB...')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [currentPercentage, setCurrentPercentage] = useState(0)
-  const [currentLocation, setCurrentLocation] = useState('')
+  const [, _setCurrentLocation] = useState('')
+  const setCurrentLocation = useCallback((loc: string) => {
+    currentLocationRef.current = loc
+    _setCurrentLocation(loc)
+  }, [])
   const [fontSize, setFontSize] = useState(100)
   const [fontFamily, setFontFamily] = useState('default')
   const [lineSpacing, setLineSpacing] = useState(1.5)
@@ -155,7 +163,7 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
     initializeContext,
     extractEPUBText,
     resetExtraction,
-  } = useTextExtraction({ bookId, bookType: 'epub' })
+  } = useTextExtraction({ bookId })
 
   // Initialize context on mount
   useEffect(() => {
@@ -170,7 +178,9 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
     if (!renditionRef.current) return
 
     try {
-      const contents = renditionRef.current.getContents() as any
+      // epub.js getContents() returns untyped array
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const contents = renditionRef.current.getContents() as unknown as any[]
       if (!contents || !Array.isArray(contents) || contents.length === 0) return
 
       let visibleText = ''
@@ -220,7 +230,8 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
       }
 
       // Fallback: use full chapter text from the first content if viewport detection fails
-      const first = (renditionRef.current.getContents() as any)[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const first = (renditionRef.current.getContents() as unknown as any[])[0]
       const doc = first?.document as Document | null
       if (doc?.body) {
         const fallback = doc.body.innerText || doc.body.textContent || ''
@@ -265,15 +276,21 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
     rendition.themes.fontSize(`${fontSize}%`)
   }, [isDark, fontFamily, lineSpacing, margins, fontSize])
 
+  // Keep ref in sync so scroll mode effect can use latest styles without re-triggering
+  applyEpubStylesRef.current = applyEpubStyles
+
   // Apply theme changes to EPUB rendition when settings change
+  // Note: loading is NOT a dep — initEPUB applies styles itself during init.
+  // Adding loading here would re-apply styles when loading→false, triggering
+  // a redundant relocated event and potential render loop.
   useEffect(() => {
-    if (renditionRef.current && !loading) {
-      applyEpubStyles(renditionRef.current)
+    if (renditionRef.current && initCompleteRef.current) {
+      applyEpubStylesRef.current(renditionRef.current)
     }
     if (viewerRef.current) {
       viewerRef.current.style.backgroundColor = isDark ? '#18181b' : '#ffffff'
     }
-  }, [isDark, fontSize, fontFamily, lineSpacing, margins, applyEpubStyles, loading])
+  }, [isDark, fontSize, fontFamily, lineSpacing, margins])
 
   // Initialize EPUB
   useEffect(() => {
@@ -323,6 +340,7 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
         if (cancelled) return
 
         setLoadingMessage('Parsing EPUB...')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const book = ePub(epubData as any)
         bookRef.current = book
 
@@ -334,7 +352,7 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
         setLoadingMessage('Loading contents...')
         const navigation = await book.loaded.navigation
         if (navigation.toc) {
-          const items: TocItem[] = navigation.toc.map((item: any) => ({
+          const items: TocItem[] = navigation.toc.map((item: { label: string; href: string }) => ({
             label: item.label,
             href: item.href,
           }))
@@ -371,7 +389,7 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
         }
         
         if (!savedLocation) {
-          const savedProgress = progress as any
+          const savedProgress = progress as { location?: string }
           savedLocation = savedProgress?.location
         }
 
@@ -391,10 +409,18 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
         setEstimatedTimeLeft(totalMinutes) // Initialize with total time
 
         // Track location changes
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rendition.on('relocated', (location: any) => {
           if (cancelled) return
 
           const cfi = location.start.cfi
+          
+          // Deduplicate — skip if we already processed this exact location.
+          // epub.js can fire relocated multiple times for the same CFI
+          // (e.g., after style application or resize).
+          if (cfi === lastCfiRef.current) return
+          lastCfiRef.current = cfi
+
           setCurrentLocation(cfi)
 
           try {
@@ -436,14 +462,15 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
                 totalPages: book.locations.length(),
                 percentage: percentage * 100,
                 location: cfi,
-              } as any)
+              })
             }, 500)
           }
         })
 
         // Add scroll listener to EPUB content iframes to keep TTS synced with visible content
         rendition.on('rendered', () => {
-          const contents = rendition.getContents() as any
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const contents = rendition.getContents() as unknown as any[]
           if (contents && Array.isArray(contents)) {
             for (const content of contents) {
               const win = content.window as Window | undefined
@@ -462,6 +489,8 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
         })
 
         setLoading(false)
+        // Mark init as complete so style effect can apply subsequent changes
+        initCompleteRef.current = true
       } catch (error) {
         if (cancelled) return
         console.error('[EPUBReader] Error loading EPUB:', error)
@@ -475,6 +504,8 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
 
     return () => {
       cancelled = true
+      initCompleteRef.current = false
+      lastCfiRef.current = ''
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
@@ -503,7 +534,8 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
     if (!bookRef.current || !viewerRef.current || loading) return
     
     const book = bookRef.current
-    const savedLocation = currentLocation
+    // Use ref to get current location without adding it to deps (which would cause infinite loop)
+    const savedLocation = currentLocationRef.current
     
     // Destroy current rendition
     if (renditionRef.current) {
@@ -527,12 +559,14 @@ export function EPUBReader({ bookId, fileUrl, bookTitle, bookAuthor }: EPUBReade
     })
     renditionRef.current = rendition
     
-    // Apply styles
-    applyEpubStyles(rendition)
+    // Apply styles using ref to avoid dep on applyEpubStyles
+    applyEpubStylesRef.current(rendition)
     
     // Navigate to saved location
     rendition.display(savedLocation || undefined)
-  }, [scrollMode, loading, currentLocation, applyEpubStyles])
+  // currentLocation and applyEpubStyles intentionally excluded - accessed via refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollMode, loading])
 
   // Apply font size changes (acts like zoom)
   useEffect(() => {

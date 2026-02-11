@@ -5,10 +5,9 @@ import { useBookContextStore } from '@/lib/stores/bookContextStore'
 
 interface UseTextExtractionOptions {
   bookId: string
-  bookType: 'pdf' | 'epub'
 }
 
-export function useTextExtraction({ bookId, bookType }: UseTextExtractionOptions) {
+export function useTextExtraction({ bookId }: UseTextExtractionOptions) {
   const { addContextChunk, setCurrentBook, updatePosition } = useBookContextStore()
   const extractionQueueRef = useRef<Set<number | string>>(new Set())
   const extractedPagesRef = useRef<Set<number | string>>(new Set())
@@ -20,6 +19,7 @@ export function useTextExtraction({ bookId, bookType }: UseTextExtractionOptions
 
   // Extract text from PDF page
   const extractPDFPageText = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (page: any, pageNum: number) => {
       // Skip if already extracted or in queue
       if (extractedPagesRef.current.has(pageNum) || extractionQueueRef.current.has(pageNum)) {
@@ -31,7 +31,8 @@ export function useTextExtraction({ bookId, bookType }: UseTextExtractionOptions
       try {
         const textContent = await page.getTextContent()
         const text = textContent.items
-          .map((item: any) => item.str)
+          .filter((item: Record<string, unknown>) => 'str' in item)
+          .map((item: Record<string, unknown>) => item.str as string)
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim()
@@ -55,6 +56,7 @@ export function useTextExtraction({ bookId, bookType }: UseTextExtractionOptions
 
   // Extract text from multiple PDF pages (batch extraction)
   const extractPDFPagesUpTo = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (pdfDoc: any, currentPage: number) => {
       const extractionPromises: Promise<void>[] = []
 
@@ -98,13 +100,15 @@ export function useTextExtraction({ bookId, bookType }: UseTextExtractionOptions
   // Extract text from EPUB chapter/section
   // Extracts the current section's text and tracks position
   const extractEPUBText = useCallback(
-    async (book: any, rendition: any, percentage: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (book: unknown, rendition: { getContents: () => any }, percentage: number) => {
       try {
         // Round to nearest integer percentage to avoid too many chunks
         const positionKey = Math.floor(percentage * 100)
         
         // Get current chapter content
         const contents = rendition.getContents()
+        if (!contents || !Array.isArray(contents)) return
         
         for (const content of contents) {
           const doc = content.document

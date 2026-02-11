@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useRouter } from 'next/navigation'
 import { Upload, FileText, Loader2, X, Plus, Check } from 'lucide-react'
@@ -9,16 +9,11 @@ import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useCollections, useTags, Tag, Collection } from '@/lib/hooks/useLibrary'
+import { useCollections, useTags } from '@/lib/hooks/useLibrary'
 import { createClient } from '@/lib/supabase/client'
 import { generateCoverFromFile } from '@/lib/utils/generateCover'
 import ePub from 'epubjs'
-import * as pdfjsLib from 'pdfjs-dist'
-
-// Configure PDF.js worker
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-}
+import { pdfjsLib } from '@/lib/utils/pdfWorker'
 
 interface BookUploadFormProps {
   userId: string
@@ -33,7 +28,7 @@ interface BookMetadata {
 
 export function BookUploadForm({ userId, onUploadComplete }: BookUploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [step, setStep] = useState<'select' | 'metadata' | 'uploading'>('select')
@@ -53,7 +48,7 @@ export function BookUploadForm({ userId, onUploadComplete }: BookUploadFormProps
   const [showNewTagInput, setShowNewTagInput] = useState(false)
   
   const router = useRouter()
-  const { collections, createCollection } = useCollections()
+  const { collections } = useCollections()
   const { tags, createTag, addTagToBook } = useTags()
   const { addBookToCollection } = useCollections()
 
@@ -61,7 +56,7 @@ export function BookUploadForm({ userId, onUploadComplete }: BookUploadFormProps
   const extractEPUBMetadata = async (file: File): Promise<Partial<BookMetadata>> => {
     try {
       const arrayBuffer = await file.arrayBuffer()
-      const book = ePub(arrayBuffer as any)
+      const book = ePub(arrayBuffer as unknown as string)
       await book.ready
       
       const metadata = await book.loaded.metadata
@@ -88,7 +83,7 @@ export function BookUploadForm({ userId, onUploadComplete }: BookUploadFormProps
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
       const metadata = await pdf.getMetadata()
       
-      const info = metadata.info as any
+      const info = metadata.info as Record<string, string>
       
       return {
         title: info?.Title || file.name.replace(/\.pdf$/i, ''),
@@ -324,7 +319,7 @@ export function BookUploadForm({ userId, onUploadComplete }: BookUploadFormProps
             Drag and drop or click to select a PDF or EPUB file
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Maximum file size: 5MB
+            Maximum file size: 500MB
           </p>
         </div>
 

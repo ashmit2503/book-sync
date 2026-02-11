@@ -70,17 +70,14 @@ export function BookCard({ book, onUpdate }: BookCardProps) {
 
     setDeleting(true)
     
-    // Call onUpdate immediately for optimistic UI update
-    onUpdate?.()
-    
     try {
       await deleteBook(book.id)
-      // No need to call router.refresh() - optimistic update already removed it from UI
+      // Call onUpdate after successful delete for optimistic UI update
+      onUpdate?.()
     } catch (error) {
       console.error('Failed to delete book:', error)
       alert('Failed to delete book. Please try again.')
       setDeleting(false)
-      // Refresh to restore the book if deletion failed
       router.refresh()
     }
   }

@@ -46,7 +46,7 @@ export default function RegisterPage() {
         email,
         password,
         options: {
-          emailRedirectTo: 'https://book-sync-ai.vercel.app/library',
+          emailRedirectTo: `${window.location.origin}/library`,
         },
       })
 

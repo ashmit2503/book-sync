@@ -17,8 +17,9 @@ export function ServiceWorkerRegistration() {
       const handleOnline = () => {
         if ('sync' in navigator.serviceWorker) {
           navigator.serviceWorker.ready.then((registration) => {
-            ;(registration as any).sync?.register('sync-reading-progress')
-            ;(registration as any).sync?.register('sync-annotations')
+            const reg = registration as ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } }
+            reg.sync?.register('sync-reading-progress')
+            reg.sync?.register('sync-annotations')
           })
         }
       }

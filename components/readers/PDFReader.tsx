@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
+import { pdfjsLib } from '@/lib/utils/pdfWorker'
 import { useReadingProgress } from '@/lib/hooks/useReadingProgress'
 import { useTextExtraction } from '@/lib/hooks/useTextExtraction'
 import { useReadingSession } from '@/lib/hooks/useReadingSession'
@@ -9,7 +9,7 @@ import { useUserPreferences } from '@/lib/hooks/useUserPreferences'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { getCachedPDF, cachePDF } from '@/lib/utils/pdfCache'
+import { getCachedPDF, cachePDF } from '@/lib/utils/indexedDBCache'
 import { AIAssistant } from '@/components/ai/AIAssistant'
 import { CopyPopup } from '@/components/ui/CopyPopup'
 import { TextToSpeech } from '@/components/readers/TextToSpeech'
@@ -39,11 +39,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
-
-// Configure PDF.js worker
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-}
 
 // Average reading speed (words per minute) for time estimation
 const AVERAGE_WPM = 250
@@ -94,14 +89,19 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
   const [currentPageText, setCurrentPageText] = useState('')
   const [showReadingTime, setShowReadingTime] = useState(true)
   const [estimatedTimeLeft, setEstimatedTimeLeft] = useState(0) // in minutes
+  const [preferencesApplied, setPreferencesApplied] = useState(false)
+  const currentPageRef = useRef(1)
 
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const { progress, updateProgress, isLoading: progressLoading } = useReadingProgress(bookId)
 
+  // Keep currentPage ref in sync
+  currentPageRef.current = currentPage
+
   // Apply user preferences on load
   useEffect(() => {
-    if (!preferencesLoading && preferences) {
+    if (!preferencesLoading && preferences && !preferencesApplied) {
       // Apply zoom based on font size preference (scale mapping)
       const preferredScale = (preferences.font_size / 100) * 1.2
       setScale(Math.max(0.5, Math.min(4, preferredScale)))
@@ -111,8 +111,9 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
       if (preferences.enable_tts) {
         setShowTTS(true)
       }
+      setPreferencesApplied(true)
     }
-  }, [preferencesLoading, preferences])
+  }, [preferencesLoading, preferences, preferencesApplied])
 
   // Calculate reading time based on number of pages
   useEffect(() => {
@@ -141,7 +142,7 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
     initializeContext,
     extractPDFPagesUpTo,
     resetExtraction,
-  } = useTextExtraction({ bookId, bookType: 'pdf' })
+  } = useTextExtraction({ bookId })
 
   // Initialize context on mount
   useEffect(() => {
@@ -159,7 +160,8 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
       const page = await pdfDoc.getPage(currentPage)
       const textContent = await page.getTextContent()
       const text = textContent.items
-        .map((item: any) => item.str)
+        .filter((item): item is { str: string } & typeof item => 'str' in item)
+        .map((item) => item.str)
         .join(' ')
       setCurrentPageText(text)
     } catch (error) {
@@ -433,7 +435,7 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
 
     // Get target position from localStorage or database
     const savedPosition = getSavedPosition()
-    const progressData = progress as any
+    const progressData = progress as { currentPage?: number; pageOffsetPercent?: number }
 
     const targetPage = savedPosition?.currentPage || progressData?.currentPage || 1
     const targetOffset = savedPosition?.pageOffsetPercent || progressData?.pageOffsetPercent || 0
@@ -525,19 +527,20 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
       saveTimeoutRef.current = setTimeout(() => {
         const maxScroll = container.scrollHeight - container.clientHeight
         const scrollPercentage = maxScroll > 0 ? scrollTop / maxScroll : 0
-        const pageOffsetPercent = calculatePageOffset(currentPage)
+        const page = currentPageRef.current
+        const pageOffsetPercent = calculatePageOffset(page)
 
         // Save precise position to localStorage (page + offset within page)
-        savePosition(currentPage, pageOffsetPercent, scrollPercentage)
+        savePosition(page, pageOffsetPercent, scrollPercentage)
 
         // Also save to database via hook (including pageOffsetPercent for cross-device sync)
         updateProgress({
-          currentPage,
+          currentPage: page,
           totalPages: numPages,
-          percentage: (currentPage / numPages) * 100,
+          percentage: (page / numPages) * 100,
           scrollPercentage: Math.max(0, Math.min(1, scrollPercentage)),
           pageOffsetPercent,
-        } as any)
+        })
       }, 300)
     }
 
@@ -548,7 +551,7 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [pdfDoc, numPages, currentPage, renderVisiblePages, updateProgress, savePosition, calculatePageOffset])
+  }, [pdfDoc, numPages, renderVisiblePages, updateProgress, savePosition, calculatePageOffset])
 
   // Save progress immediately when leaving page
   useEffect(() => {
@@ -559,11 +562,12 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
       const scrollTop = container.scrollTop
       const maxScroll = container.scrollHeight - container.clientHeight
       const scrollPercentage = maxScroll > 0 ? scrollTop / maxScroll : 0
-      const pageOffsetPercent = calculatePageOffset(currentPage)
+      const page = currentPageRef.current
+      const pageOffsetPercent = calculatePageOffset(page)
 
       // Save to localStorage synchronously
       const position: SavedPosition = {
-        currentPage,
+        currentPage: page,
         pageOffsetPercent,
         scrollPercentage,
         timestamp: Date.now(),
@@ -573,7 +577,7 @@ export function PDFReader({ bookId, fileUrl, bookTitle, bookAuthor }: PDFReaderP
 
     window.addEventListener('beforeunload', saveOnUnload)
     return () => window.removeEventListener('beforeunload', saveOnUnload)
-  }, [bookId, currentPage, calculatePageOffset])
+  }, [bookId, calculatePageOffset])
 
   // Re-render on scale/rotation change
   useEffect(() => {

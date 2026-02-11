@@ -59,8 +59,8 @@ export async function PUT(
       .update({
         ...(title && { title }),
         ...(author !== undefined && { author }),
-        ...(metadata && { metadata }),
-        ...(reading_progress && { reading_progress }),
+        ...(metadata !== undefined && { metadata }),
+        ...(reading_progress !== undefined && { reading_progress }),
       })
       .eq('id', params.id)
       .eq('user_id', user.id)

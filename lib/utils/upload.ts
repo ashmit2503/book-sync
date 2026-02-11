@@ -59,7 +59,7 @@ export async function deleteBook(bookId: string): Promise<void> {
   }
 
   // Delete storage files (best effort)
-  const storageDeletes: Promise<any>[] = []
+  const storageDeletes: Promise<unknown>[] = []
 
   if (book.file_path) {
     storageDeletes.push(

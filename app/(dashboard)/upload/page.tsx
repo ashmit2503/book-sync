@@ -35,7 +35,7 @@ export default async function UploadPage() {
           </li>
         </ul>
         <p className="mt-4 text-sm text-muted-foreground">
-          Maximum file size: 5MB per book
+          Maximum file size: 500MB per book
         </p>
       </div>
     </div>
