@@ -8,6 +8,10 @@ export async function updateSession(request: NextRequest) {
     },
   })
 
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return response
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -54,9 +58,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getUserWithTimeout(supabase)
 
   // Redirect to login if accessing protected route without authentication
   if (!user && !request.nextUrl.pathname.startsWith('/login') && 
@@ -77,4 +79,21 @@ export async function updateSession(request: NextRequest) {
   }
 
   return response
+}
+
+async function getUserWithTimeout(
+  supabase: ReturnType<typeof createServerClient>,
+  timeoutMs = 2000
+) {
+  try {
+    const result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ])
+
+    if (!result) return null
+    return result.data.user
+  } catch {
+    return null
+  }
 }
